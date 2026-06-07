@@ -1,0 +1,12 @@
+[package]
+name = "service-a"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+axum.workspace = true
+my-infra-otel = { path = "../../crates/my-infra-otel" }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }

@@ -1,0 +1,31 @@
+[package]
+name = "my-infra-otel"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[features]
+default = ["axum", "reqwest-client", "otlp", "json-logs"]
+axum = []
+reqwest-client = ["dep:reqwest"]
+otlp = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
+json-logs = ["dep:tracing-subscriber"]
+env-config = []
+file-config = []
+test-utils = []
+
+[dependencies]
+http.workspace = true
+http-body.workspace = true
+opentelemetry = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
