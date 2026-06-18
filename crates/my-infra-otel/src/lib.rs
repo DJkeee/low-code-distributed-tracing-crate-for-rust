@@ -4,6 +4,7 @@ pub mod config;
 pub mod error;
 pub mod events;
 pub mod guard;
+pub mod header_capture;
 pub mod init;
 pub mod labels;
 pub mod layer;
@@ -23,6 +24,10 @@ pub use crate::config::{LogFormat, SamplingMode, TracingConfig, TracingConfigBui
 pub use crate::error::{ConfigError, MyOtelError, Result};
 pub use crate::events::{EventField, EventValue, record_event};
 pub use crate::guard::TracingGuard;
+pub use crate::header_capture::{
+    HeaderCapturePolicy, HeaderCapturePolicyBuilder, HeaderCaptureRule, HeaderValueMode,
+    NonUtf8Policy,
+};
 pub use crate::init::init_global_tracing;
 pub use crate::labels::{AttributeKey, HeaderAttr};
 pub use crate::layer::{MyOtelTracingLayer, MyOtelTracingLayerBuilder};

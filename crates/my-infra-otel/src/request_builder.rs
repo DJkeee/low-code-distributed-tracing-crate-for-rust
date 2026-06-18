@@ -46,23 +46,25 @@ impl TracedRequestBuilder {
         let mut request = request?;
         let method = request.method().clone();
         let url = request.url().clone();
-        let url_text = url.to_string();
+        let path = url.path().to_owned();
         let host = url.host_str().unwrap_or_default().to_owned();
         let span = tracing::info_span!(
             "http.client.request",
             otel.kind = "client",
             http.request.method = %method,
-            url.full = %url_text,
+            url.path = %path,
             server.address = %host,
             http.response.status_code = tracing::field::Empty,
             duration.ms = tracing::field::Empty,
             error.type = tracing::field::Empty,
+            otel.status_code = tracing::field::Empty,
+            otel.status_message = tracing::field::Empty,
         );
 
         #[cfg(feature = "otlp")]
         {
             span.set_attribute("http.request.method", method.to_string());
-            span.set_attribute("url.full", url_text);
+            span.set_attribute("url.path", path);
             span.set_attribute("server.address", host);
             let context = span.context();
             crate::propagation::inject_context(&context, request.headers_mut());
@@ -80,6 +82,8 @@ impl TracedRequestBuilder {
                 let error_type = response_status_error_type(response.status());
                 if let Some(error_type) = error_type {
                     span.record("error.type", error_type);
+                    span.record("otel.status_code", "ERROR");
+                    span.record("otel.status_message", error_type);
                 }
 
                 #[cfg(feature = "otlp")]
@@ -88,7 +92,6 @@ impl TracedRequestBuilder {
                     span.set_attribute("duration.ms", duration_ms);
                     if let Some(error_type) = error_type {
                         span.set_attribute("error.type", error_type);
-                        span.set_attribute("otel.status_code", "ERROR");
                     }
                 }
 
@@ -96,6 +99,8 @@ impl TracedRequestBuilder {
             }
             Err(err) => {
                 span.record("error.type", "reqwest");
+                span.record("otel.status_code", "ERROR");
+                span.record("otel.status_message", "reqwest");
                 #[cfg(feature = "otlp")]
                 span.set_attribute("error.type", "reqwest");
                 Err(err.into())

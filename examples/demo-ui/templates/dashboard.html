@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>my-infra-otel demo</title>
+  <style>
+    :root {
+      --ink: #17201a;
+      --muted: #617064;
+      --paper: #f7f1e3;
+      --card: #fffaf0;
+      --line: #ded4bd;
+      --good: #0f7b4f;
+      --bad: #b13d2a;
+      --accent: #0e5e6f;
+      --accent-2: #cf7f27;
+      --code: #10251f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(207, 127, 39, .20), transparent 30rem),
+        radial-gradient(circle at 85% 0%, rgba(14, 94, 111, .20), transparent 26rem),
+        linear-gradient(135deg, #f7f1e3 0%, #efe4cb 100%);
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+    }
+    header {
+      padding: 48px min(6vw, 72px) 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(42px, 7vw, 86px);
+      letter-spacing: -0.06em;
+      line-height: .9;
+    }
+    h2 { margin: 0 0 16px; font-size: 26px; }
+    h3 { margin: 0 0 8px; font-size: 19px; }
+    p { color: var(--muted); line-height: 1.55; }
+    main {
+      display: grid;
+      gap: 18px;
+      padding: 0 min(6vw, 72px) 56px;
+    }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .55fr); gap: 18px; }
+    .card {
+      background: rgba(255, 250, 240, .86);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: 0 24px 70px rgba(54, 41, 16, .12);
+      padding: 22px;
+      backdrop-filter: blur(8px);
+    }
+    .status { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+    .ok { background: var(--good); }
+    .fail { background: var(--bad); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: rgba(255,255,255,.45);
+      font-size: 14px;
+      color: var(--muted);
+    }
+    form { display: grid; gap: 14px; }
+    label { display: grid; gap: 6px; font-weight: 700; }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 13px 14px;
+      background: #fffdf7;
+      color: var(--ink);
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 16px;
+      padding: 15px 18px;
+      background: var(--accent);
+      color: white;
+      font: 800 16px ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+      box-shadow: 0 14px 30px rgba(14, 94, 111, .24);
+    }
+    button:hover { background: #0a4b59; }
+    code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      color: #e8fff5;
+      background: var(--code);
+      border-radius: 16px;
+      padding: 16px;
+      line-height: 1.45;
+    }
+    a { color: var(--accent); font-weight: 700; }
+    .summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .error {
+      border-color: rgba(177, 61, 42, .35);
+      background: rgba(177, 61, 42, .08);
+      color: var(--bad);
+    }
+    .span-list { display: grid; gap: 12px; }
+    .span-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(255, 255, 255, .42);
+    }
+    .span-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+    .service { color: var(--accent-2); font-weight: 800; text-transform: uppercase; font-size: 12px; letter-spacing: .08em; }
+    .operation { font-size: 20px; font-weight: 800; }
+    .tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .tag { max-width: 100%; overflow-wrap: anywhere; border: 1px solid rgba(14, 94, 111, .18); border-radius: 999px; padding: 5px 8px; font-size: 12px; background: rgba(14, 94, 111, .06); }
+    .trace-shape { font-size: 14px; }
+    @media (max-width: 900px) {
+      .grid, .two { grid-template-columns: 1fr; }
+      header, main { padding-left: 18px; padding-right: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="pill">Rust UI · Axum · Askama · OpenTelemetry demo</span>
+    <h1>Trace proof board</h1>
+    <p>Run the checkout flow and inspect the exact trace collected from Jaeger: trace id, all spans, parent ids, timings, services, and tags.</p>
+  </header>
+
+  <main>
+    <section class="grid">
+      {% for probe in health.probes %}
+      <article class="card">
+        <h3>{{ probe.label }}</h3>
+        <div class="status">
+          {% if probe.ok %}<span class="dot ok"></span><strong>reachable</strong>{% else %}<span class="dot fail"></span><strong>unreachable</strong>{% endif %}
+        </div>
+        <p class="mono">{{ probe.detail }}</p>
+      </article>
+      {% endfor %}
+    </section>
+
+    <section class="two">
+      <article class="card">
+        <h2>Run demo request</h2>
+        <p>The UI sends headers to <code>checkout-api</code>. The tracing client injects <code>traceparent</code>, then the UI finds the matching Jaeger trace by <code>request.id</code>.</p>
+        <form method="post" action="/">
+          <label>User ID <input name="user_id" value="42" autocomplete="off"></label>
+          <label>Tenant ID <input name="tenant_id" value="demo" autocomplete="off"></label>
+          <button type="submit">Run checkout trace</button>
+        </form>
+      </article>
+
+      <aside class="card">
+        <h2>Demo endpoints</h2>
+        <p><strong>checkout-api</strong><br><span class="mono">{{ checkout_api_url }}</span></p>
+        <p><strong>order-processor</strong><br><span class="mono">{{ order_processor_url }}</span></p>
+        <p><strong>risk-engine</strong><br><span class="mono">{{ risk_engine_url }}</span></p>
+        <p><strong>Jaeger</strong><br><a href="{{ jaeger_url }}" target="_blank" rel="noreferrer">{{ jaeger_url }}</a></p>
+        <pre class="trace-shape">demo-ui POST /
+  demo-ui -> checkout-api client span
+    checkout-api /checkout
+      checkout.validate_cart
+      checkout.reserve_inventory
+      checkout.request_direct_risk_quote -> risk-engine /quote-risk
+        quote-risk.prepare_risk_features
+        quote-risk.compute_raw_risk_score
+        quote-risk.persist_risk_decision
+      checkout.request_order_processing -> order-processor /process
+        process.normalize_request
+        process.request_risk_quote -> risk-engine /quote-risk
+        process.finalize</pre>
+      </aside>
+    </section>
+
+    {% match result %}
+    {% when Some with (run) %}
+    <section class="card">
+      <h2>Run result</h2>
+      <div class="summary">
+        <span class="pill">request.id <span class="mono">{{ run.request_id }}</span></span>
+        <span class="pill">user.id <span class="mono">{{ run.user_id }}</span></span>
+        <span class="pill">tenant.id <span class="mono">{{ run.tenant_id }}</span></span>
+        <span class="pill">checkout-api status <span class="mono">{{ run.response_status }}</span></span>
+      </div>
+      {% match run.error %}
+      {% when Some with (error) %}
+      <p class="card error">{{ error }}</p>
+      {% when None %}{% endmatch %}
+      <h3>checkout-api response</h3>
+      <pre>{{ run.response_body }}</pre>
+    </section>
+
+    {% match run.trace %}
+    {% when Some with (trace) %}
+    <section class="card">
+      <h2>Trace evidence</h2>
+      <div class="summary">
+        <span class="pill">trace_id <span class="mono">{{ trace.trace_id }}</span></span>
+        <span class="pill">spans <span class="mono">{{ trace.span_count }}</span></span>
+        <span class="pill">duration <span class="mono">{{ trace.total_duration_ms }} ms</span></span>
+        <span class="pill">services <span class="mono">{{ trace.services }}</span></span>
+      </div>
+      <p><a href="{{ trace.jaeger_url }}" target="_blank" rel="noreferrer">Open this trace in Jaeger</a></p>
+      <div class="span-list">
+        {% for span in trace.spans %}
+        <article class="span-card">
+          <div class="span-head">
+            <div>
+              <div class="service">{{ span.service }}</div>
+              <div class="operation">{{ span.operation }}</div>
+            </div>
+            <div class="mono">{{ span.duration_ms }} ms</div>
+          </div>
+          <div class="summary">
+            <span class="pill">span_id <span class="mono">{{ span.span_id }}</span></span>
+            {% match span.parent_span_id %}{% when Some with (parent) %}<span class="pill">parent <span class="mono">{{ parent }}</span></span>{% when None %}<span class="pill">root span</span>{% endmatch %}
+            <span class="pill">start +{{ span.start_offset_ms }} ms</span>
+          </div>
+          <div class="tags">
+            {% for tag in span.tags %}
+            <span class="tag"><strong>{{ tag.key }}</strong>=<span class="mono">{{ tag.value }}</span></span>
+            {% endfor %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% when None %}{% endmatch %}
+    {% when None %}{% endmatch %}
+  </main>
+</body>
+</html>

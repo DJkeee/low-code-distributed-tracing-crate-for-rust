@@ -42,6 +42,21 @@ pub enum ConfigError {
     #[error("reserved attribute key cannot be used: {0}")]
     ReservedAttributeKey(String),
 
+    #[error("invalid header name: {0}")]
+    InvalidHeaderName(String),
+
+    #[error("reserved header name cannot be captured: {0}")]
+    ReservedHeaderName(String),
+
+    #[error("invalid header attribute key: {0}")]
+    InvalidHeaderAttributeKey(String),
+
+    #[error("duplicate header capture rule: {0}")]
+    DuplicateHeaderRule(String),
+
+    #[error("header value limit must be greater than zero")]
+    InvalidHeaderValueLimit,
+
     #[error("export timeout must be greater than zero")]
     InvalidExportTimeout,
 

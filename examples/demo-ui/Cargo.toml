@@ -1,14 +1,16 @@
 [package]
-name = "service-b"
+name = "demo-ui"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
 publish = false
 
 [dependencies]
+askama.workspace = true
 axum.workspace = true
 my-infra-otel = { path = "../../crates/my-infra-otel" }
 reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
 tracing.workspace = true

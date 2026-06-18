@@ -1,5 +1,5 @@
 [package]
-name = "service-a"
+name = "order-processor"
 edition.workspace = true
 license.workspace = true
 version.workspace = true

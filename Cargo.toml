@@ -1,10 +1,10 @@
 [workspace]
 members = [
     "crates/my-infra-otel",
+    "examples/checkout-api",
     "examples/demo-ui",
-    "examples/service-a",
-    "examples/service-b",
-    "examples/service-c",
+    "examples/order-processor",
+    "examples/risk-engine",
 ]
 resolver = "2"
 

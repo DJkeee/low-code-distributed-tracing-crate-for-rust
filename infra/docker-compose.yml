@@ -27,45 +27,45 @@ services:
     depends_on:
       - jaeger
 
-  service-c:
+  risk-engine:
     <<: *rust-service
-    command: cargo run -p service-c
+    command: cargo run -p risk-engine
     environment:
       OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
       RUST_LOG: info
-      SERVICE_C_BIND: 0.0.0.0:3003
+      RISK_ENGINE_BIND: 0.0.0.0:3003
     ports:
       - "3003:3003"
 
-  service-b:
+  order-processor:
     <<: *rust-service
-    command: cargo run -p service-b
+    command: cargo run -p order-processor
     environment:
       OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
       RUST_LOG: info
-      SERVICE_B_BIND: 0.0.0.0:3001
-      SERVICE_C_URL: http://service-c:3003
+      ORDER_PROCESSOR_BIND: 0.0.0.0:3001
+      RISK_ENGINE_URL: http://risk-engine:3003
     ports:
       - "3001:3001"
     depends_on:
       - otel-collector
-      - service-c
+      - risk-engine
 
-  service-a:
+  checkout-api:
     <<: *rust-service
-    command: cargo run -p service-a
+    command: cargo run -p checkout-api
     environment:
       OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
       RUST_LOG: info
-      SERVICE_A_BIND: 0.0.0.0:3000
-      SERVICE_B_URL: http://service-b:3001
-      SERVICE_C_URL: http://service-c:3003
+      CHECKOUT_API_BIND: 0.0.0.0:3000
+      ORDER_PROCESSOR_URL: http://order-processor:3001
+      RISK_ENGINE_URL: http://risk-engine:3003
     ports:
       - "3000:3000"
     depends_on:
       - otel-collector
-      - service-b
-      - service-c
+      - order-processor
+      - risk-engine
 
   demo-ui:
     <<: *rust-service
@@ -74,15 +74,15 @@ services:
       OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
       RUST_LOG: info
       DEMO_UI_BIND: 0.0.0.0:3002
-      SERVICE_A_URL: http://service-a:3000
-      SERVICE_B_URL: http://service-b:3001
-      SERVICE_C_URL: http://service-c:3003
+      CHECKOUT_API_URL: http://checkout-api:3000
+      ORDER_PROCESSOR_URL: http://order-processor:3001
+      RISK_ENGINE_URL: http://risk-engine:3003
       JAEGER_URL: http://jaeger:16686
     ports:
       - "3002:3002"
     depends_on:
       - jaeger
       - otel-collector
-      - service-a
-      - service-b
-      - service-c
+      - checkout-api
+      - order-processor
+      - risk-engine

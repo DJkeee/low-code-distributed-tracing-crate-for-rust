@@ -1,31 +1,25 @@
 use std::time::{Duration, Instant};
 
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
-use my_infra_otel::{
-    EventField, MyOtelTracingLayer, TracedHttpClient, TracingConfig, init_global_tracing,
-    record_event,
-};
+use my_infra_otel::{EventField, TracedHttpClient, init_global_tracing, record_event};
 use serde_json::{Value, json};
 use tokio::time::sleep;
 use tracing::Instrument;
 
+mod tracing_setup;
+
 #[derive(Clone)]
 struct AppState {
     client: TracedHttpClient,
-    service_b_url: String,
-    service_c_url: String,
+    order_processor_url: String,
+    risk_engine_url: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = tracing_config("service-a")?;
+    let config = tracing_setup::tracing_config("checkout-api")?;
     let _guard = init_global_tracing(config)?;
-
-    let layer = MyOtelTracingLayer::builder()
-        .header_attr("x-user-id", "user.id")
-        .header_attr("x-request-id", "request.id")
-        .header_attr("x-tenant-id", "tenant.id")
-        .build()?;
+    let layer = tracing_setup::tracing_layer()?;
 
     let state = AppState {
         client: TracedHttpClient::new(
@@ -33,10 +27,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .timeout(Duration::from_secs(3))
                 .build()?,
         ),
-        service_b_url: std::env::var("SERVICE_B_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:3001".to_owned()),
-        service_c_url: std::env::var("SERVICE_C_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:3003".to_owned()),
+        order_processor_url: env_or_default(
+            "ORDER_PROCESSOR_URL",
+            "SERVICE_B_URL",
+            "http://127.0.0.1:3001",
+        ),
+        risk_engine_url: env_or_default(
+            "RISK_ENGINE_URL",
+            "SERVICE_C_URL",
+            "http://127.0.0.1:3003",
+        ),
     };
 
     let app = Router::new()
@@ -45,9 +45,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state)
         .layer(layer);
 
-    let bind = std::env::var("SERVICE_A_BIND").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
+    let bind = env_or_default("CHECKOUT_API_BIND", "SERVICE_A_BIND", "127.0.0.1:3000");
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    tracing::info!(%bind, "service-a listening");
+    tracing::info!(%bind, "checkout-api listening");
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -69,9 +69,13 @@ async fn checkout(State(state): State<AppState>) -> Result<Json<Value>, (StatusC
     authenticate_customer(&checkout_id).await;
     reserve_inventory(&checkout_id).await;
     let pricing = price_order(&checkout_id).await;
-    let direct_risk = call_risk_engine(&state).await.map_err(internal_error)?;
+    let direct_risk = request_direct_risk_quote(&state)
+        .await
+        .map_err(internal_error)?;
     authorize_payment(&checkout_id, pricing.total_cents).await;
-    let service_b = call_processing(&state).await.map_err(internal_error)?;
+    let order_processing = request_order_processing(&state)
+        .await
+        .map_err(internal_error)?;
     build_response().await;
 
     let duration_ms = started_at.elapsed().as_secs_f64() * 1000.0;
@@ -94,7 +98,7 @@ async fn checkout(State(state): State<AppState>) -> Result<Json<Value>, (StatusC
             "discount_cents": pricing.discount_cents,
         },
         "service_c_direct": direct_risk,
-        "service_b": service_b,
+        "service_b": order_processing,
         "duration_ms": duration_ms,
     })))
 }
@@ -224,11 +228,11 @@ async fn authorize_payment(checkout_id: &str, total_cents: i64) {
     .await;
 }
 
-async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOtelError> {
+async fn request_direct_risk_quote(state: &AppState) -> Result<Value, my_infra_otel::MyOtelError> {
     async {
         let response = state
             .client
-            .get(format!("{}/quote-risk", state.service_c_url))
+            .get(format!("{}/quote-risk", state.risk_engine_url))
             .send()
             .await?;
         let status = response.status();
@@ -236,8 +240,8 @@ async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOt
             record_event(
                 "checkout.direct_risk.failed",
                 [
-                    EventField::string("operation.name", "checkout.call_risk_engine"),
-                    EventField::string("downstream.service", "service-c"),
+                    EventField::string("operation.name", "checkout.request_direct_risk_quote"),
+                    EventField::string("downstream.service", "risk-engine"),
                     EventField::i64("downstream.status_code", i64::from(status.as_u16())),
                 ],
             );
@@ -251,8 +255,8 @@ async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOt
         record_event(
             "checkout.direct_risk.completed",
             [
-                EventField::string("operation.name", "checkout.call_risk_engine"),
-                EventField::string("downstream.service", "service-c"),
+                EventField::string("operation.name", "checkout.request_direct_risk_quote"),
+                EventField::string("downstream.service", "risk-engine"),
                 EventField::i64("downstream.status_code", i64::from(status.as_u16())),
             ],
         );
@@ -260,20 +264,20 @@ async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOt
         Ok(body)
     }
     .instrument(tracing::info_span!(
-        "checkout.call_risk_engine",
+        "checkout.request_direct_risk_quote",
         component = "checkout",
-        operation.name = "checkout.call_risk_engine",
-        step = "call_risk_engine",
-        downstream.service = "service-c",
+        operation.name = "checkout.request_direct_risk_quote",
+        step = "request_direct_risk_quote",
+        downstream.service = "risk-engine",
     ))
     .await
 }
 
-async fn call_processing(state: &AppState) -> Result<Value, my_infra_otel::MyOtelError> {
+async fn request_order_processing(state: &AppState) -> Result<Value, my_infra_otel::MyOtelError> {
     async {
         let response = state
             .client
-            .get(format!("{}/process", state.service_b_url))
+            .get(format!("{}/process", state.order_processor_url))
             .send()
             .await?;
         let status = response.status();
@@ -281,8 +285,8 @@ async fn call_processing(state: &AppState) -> Result<Value, my_infra_otel::MyOte
             record_event(
                 "checkout.processing.failed",
                 [
-                    EventField::string("operation.name", "checkout.call_processing"),
-                    EventField::string("downstream.service", "service-b"),
+                    EventField::string("operation.name", "checkout.request_order_processing"),
+                    EventField::string("downstream.service", "order-processor"),
                     EventField::i64("downstream.status_code", i64::from(status.as_u16())),
                 ],
             );
@@ -296,8 +300,8 @@ async fn call_processing(state: &AppState) -> Result<Value, my_infra_otel::MyOte
         record_event(
             "checkout.processing.completed",
             [
-                EventField::string("operation.name", "checkout.call_processing"),
-                EventField::string("downstream.service", "service-b"),
+                EventField::string("operation.name", "checkout.request_order_processing"),
+                EventField::string("downstream.service", "order-processor"),
                 EventField::i64("downstream.status_code", i64::from(status.as_u16())),
             ],
         );
@@ -305,11 +309,11 @@ async fn call_processing(state: &AppState) -> Result<Value, my_infra_otel::MyOte
         Ok(body)
     }
     .instrument(tracing::info_span!(
-        "checkout.call_processing",
+        "checkout.request_order_processing",
         component = "checkout",
-        operation.name = "checkout.call_processing",
-        step = "call_processing",
-        downstream.service = "service-b",
+        operation.name = "checkout.request_order_processing",
+        step = "request_order_processing",
+        downstream.service = "order-processor",
     ))
     .await
 }
@@ -357,10 +361,8 @@ fn checkout_id() -> String {
     format!("checkout-{millis}")
 }
 
-fn tracing_config(service_name: &str) -> Result<TracingConfig, my_infra_otel::MyOtelError> {
-    let builder = TracingConfig::builder(service_name);
-    match std::env::var("OTLP_ENDPOINT") {
-        Ok(endpoint) => builder.otlp_endpoint(endpoint).build(),
-        Err(_) => builder.build(),
-    }
+fn env_or_default(primary: &str, legacy: &str, default: &str) -> String {
+    std::env::var(primary)
+        .or_else(|_| std::env::var(legacy))
+        .unwrap_or_else(|_| default.to_owned())
 }

@@ -11,7 +11,7 @@ It does not replace OpenTelemetry. It provides a small golden-path layer over `t
 - OTLP/HTTP trace export to an OpenTelemetry Collector.
 - Tower middleware for inbound HTTP server spans.
 - W3C `traceparent` extraction and injection.
-- Configurable header labels copied into request spans.
+- Policy-based header capture for request spans.
 - `TracedHttpClient` wrapper for outbound `reqwest` calls.
 - `record_event` helper for structured business events.
 - Explicit `TracingGuard::shutdown()` for exporter flush on shutdown.
@@ -33,7 +33,7 @@ use my_infra_otel::{MyOtelTracingLayer, TracingConfig, init_global_tracing};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = TracingConfig::builder("service-a").build()?;
+    let config = TracingConfig::builder("checkout-api").build()?;
     let guard = init_global_tracing(config)?;
 
     let app = Router::new()
@@ -69,22 +69,28 @@ let guard = init_global_tracing(config)?;
 # }
 ```
 
-## Header Labels
+## Header Capture Policy
 
 ```rust,no_run
-use my_infra_otel::MyOtelTracingLayer;
+use my_infra_otel::{HeaderCapturePolicy, HeaderValueMode, MyOtelTracingLayer};
 
 # fn build_layer() -> Result<MyOtelTracingLayer, my_infra_otel::MyOtelError> {
+let headers = HeaderCapturePolicy::builder()
+    .standard_request_ids()
+    .gateway_headers()
+    .header("x-tenant-id", "tenant.id")
+    .header_with("x-user-id", "user.id", HeaderValueMode::Redacted)
+    .max_value_len(128)
+    .build()?;
+
 let layer = MyOtelTracingLayer::builder()
-    .header_attr("x-user-id", "user.id")
-    .header_attr("x-request-id", "request.id")
-    .header_attr("x-tenant-id", "tenant.id")
+    .headers(headers)
     .build()?;
 # Ok(layer)
 # }
 ```
 
-Configured headers are copied into the request span when present. Missing configured headers are ignored.
+Only allowlisted headers are copied into the request span. Sensitive headers such as `authorization`, `cookie`, and `x-api-key` are rejected by the policy builder. Custom headers use truncated values by default; use `Redacted` or `Present` for higher-risk identifiers.
 
 ## Outbound HTTP Propagation
 
@@ -135,7 +141,7 @@ Start the full demo stack:
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-This starts Jaeger, OpenTelemetry Collector, `service-a`, `service-b`, `service-c`, and `demo-ui`.
+This starts Jaeger, OpenTelemetry Collector, `checkout-api`, `order-processor`, `risk-engine`, and `demo-ui`.
 
 Open:
 
@@ -149,22 +155,22 @@ For local manual runs, start only Collector and Jaeger:
 docker compose -f infra/docker-compose.yml up -d jaeger otel-collector
 ```
 
-Run service C:
+Run risk-engine:
 
 ```bash
-RUST_LOG=info cargo run -p service-c
+RUST_LOG=info cargo run -p risk-engine
 ```
 
-Run service B:
+Run order-processor:
 
 ```bash
-SERVICE_C_URL=http://127.0.0.1:3003 RUST_LOG=info cargo run -p service-b
+RISK_ENGINE_URL=http://127.0.0.1:3003 RUST_LOG=info cargo run -p order-processor
 ```
 
-Run service A in another terminal:
+Run checkout-api in another terminal:
 
 ```bash
-SERVICE_B_URL=http://127.0.0.1:3001 SERVICE_C_URL=http://127.0.0.1:3003 RUST_LOG=info cargo run -p service-a
+ORDER_PROCESSOR_URL=http://127.0.0.1:3001 RISK_ENGINE_URL=http://127.0.0.1:3003 RUST_LOG=info cargo run -p checkout-api
 ```
 
 Run the demo UI in a third terminal:
@@ -177,9 +183,9 @@ The UI can also be configured with:
 
 ```bash
 DEMO_UI_BIND=127.0.0.1:3002 \
-SERVICE_A_URL=http://127.0.0.1:3000 \
-SERVICE_B_URL=http://127.0.0.1:3001 \
-SERVICE_C_URL=http://127.0.0.1:3003 \
+CHECKOUT_API_URL=http://127.0.0.1:3000 \
+ORDER_PROCESSOR_URL=http://127.0.0.1:3001 \
+RISK_ENGINE_URL=http://127.0.0.1:3003 \
 JAEGER_URL=http://localhost:16686 \
 RUST_LOG=info cargo run -p demo-ui
 ```
@@ -203,29 +209,29 @@ Expected response:
 Expected trace shape:
 
 ```text
-service-a /checkout
+checkout-api /checkout
   checkout.validate_cart
   checkout.authenticate_customer
   checkout.reserve_inventory
   checkout.price_order
-  checkout.call_risk_engine
-    service-a -> service-c client span
-      service-c /quote-risk
-        quote-risk.load_model
-        quote-risk.prepare_features
-        quote-risk.compute_score
-        quote-risk.calibrate_score
-        quote-risk.explain_decision
-        quote-risk.persist_decision
+  checkout.request_direct_risk_quote
+    checkout-api -> risk-engine client span
+      risk-engine /quote-risk
+        quote-risk.load_risk_model
+        quote-risk.prepare_risk_features
+        quote-risk.compute_raw_risk_score
+        quote-risk.calibrate_risk_score
+        quote-risk.explain_risk_decision
+        quote-risk.persist_risk_decision
   checkout.authorize_payment
-  checkout.call_processing
-    service-a -> service-b client span
-      service-b /process
+  checkout.request_order_processing
+    checkout-api -> order-processor client span
+      order-processor /process
         process.normalize_request
         process.enrich_order
-        process.call_risk_engine
-          service-b -> service-c client span
-            service-c /quote-risk
+        process.request_risk_quote
+          order-processor -> risk-engine client span
+            risk-engine /quote-risk
         process.allocate_shipping
         process.write_ledger
         process.finalize
@@ -237,7 +243,7 @@ Open Jaeger UI:
 http://localhost:16686
 ```
 
-Select `service-a` and inspect the latest trace. The `service-a` server span should contain configured header labels such as `user.id`, `request.id`, and `tenant.id`.
+Select `checkout-api` and inspect the latest trace. The `checkout-api` server span should contain configured header capture attributes such as `user.id`, `request.id`, and `tenant.id`.
 
 The demo UI performs this lookup automatically after pressing `Run checkout trace`. It displays:
 
@@ -280,21 +286,21 @@ http://localhost:4318/v1/traces
 
 ### `/checkout` Returns `502`
 
-Ensure `service-b` is running on:
+Ensure `order-processor` is running on:
 
 ```text
 http://127.0.0.1:3001
 ```
 
-If `service-b` runs elsewhere, start `service-a` with `SERVICE_B_URL`.
+If `order-processor` runs elsewhere, start `checkout-api` with `ORDER_PROCESSOR_URL`.
 
-Also ensure `service-c` is running on:
+Also ensure `risk-engine` is running on:
 
 ```text
 http://127.0.0.1:3003
 ```
 
-If `service-c` runs elsewhere, start `service-a`, `service-b`, and `demo-ui` with `SERVICE_C_URL`.
+If `risk-engine` runs elsewhere, start `checkout-api`, `order-processor`, and `demo-ui` with `RISK_ENGINE_URL`.
 
 ### Double Initialization
 

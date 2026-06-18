@@ -364,6 +364,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "checkout-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "my-infra-otel",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1069,6 +1081,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "order-processor"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "my-infra-otel",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1389,6 +1413,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "risk-engine"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "my-infra-otel",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1562,41 +1597,6 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
-]
-
-[[package]]
-name = "service-a"
-version = "0.1.0"
-dependencies = [
- "axum",
- "my-infra-otel",
- "reqwest",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "service-b"
-version = "0.1.0"
-dependencies = [
- "axum",
- "my-infra-otel",
- "reqwest",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "service-c"
-version = "0.1.0"
-dependencies = [
- "axum",
- "my-infra-otel",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]

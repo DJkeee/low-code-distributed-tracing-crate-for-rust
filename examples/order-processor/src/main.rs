@@ -1,24 +1,24 @@
 use std::time::{Duration, Instant};
 
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
-use my_infra_otel::{
-    EventField, MyOtelTracingLayer, TracedHttpClient, TracingConfig, init_global_tracing,
-    record_event,
-};
+use my_infra_otel::{EventField, TracedHttpClient, init_global_tracing, record_event};
 use serde_json::{Value, json};
 use tokio::time::sleep;
 use tracing::Instrument;
 
+mod tracing_setup;
+
 #[derive(Clone)]
 struct AppState {
     client: TracedHttpClient,
-    service_c_url: String,
+    risk_engine_url: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = tracing_config("service-b")?;
+    let config = tracing_setup::tracing_config("order-processor")?;
     let _guard = init_global_tracing(config)?;
+    let layer = tracing_setup::tracing_layer()?;
 
     let state = AppState {
         client: TracedHttpClient::new(
@@ -26,24 +26,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .timeout(Duration::from_secs(3))
                 .build()?,
         ),
-        service_c_url: std::env::var("SERVICE_C_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:3003".to_owned()),
+        risk_engine_url: env_or_default(
+            "RISK_ENGINE_URL",
+            "SERVICE_C_URL",
+            "http://127.0.0.1:3003",
+        ),
     };
 
     let app = Router::new()
-        .route("/process", get(process))
+        .route("/process", get(process_order))
         .route("/health", get(health))
         .with_state(state)
-        .layer(MyOtelTracingLayer::new());
+        .layer(layer);
 
-    let bind = std::env::var("SERVICE_B_BIND").unwrap_or_else(|_| "127.0.0.1:3001".to_owned());
+    let bind = env_or_default("ORDER_PROCESSOR_BIND", "SERVICE_B_BIND", "127.0.0.1:3001");
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    tracing::info!(%bind, "service-b listening");
+    tracing::info!(%bind, "order-processor listening");
     axum::serve(listener, app).await?;
     Ok(())
 }
 
-async fn process(State(state): State<AppState>) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+async fn process_order(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let started_at = Instant::now();
 
     record_event(
@@ -53,7 +58,7 @@ async fn process(State(state): State<AppState>) -> Result<Json<Value>, (StatusCo
 
     normalize_request().await;
     enrich_order().await;
-    let risk = call_risk_engine(&state).await.map_err(internal_error)?;
+    let risk = request_risk_quote(&state).await.map_err(internal_error)?;
     allocate_shipping().await;
     write_ledger().await;
     finalize_processing().await;
@@ -116,11 +121,11 @@ async fn enrich_order() {
     .await;
 }
 
-async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOtelError> {
+async fn request_risk_quote(state: &AppState) -> Result<Value, my_infra_otel::MyOtelError> {
     async {
         let response = state
             .client
-            .get(format!("{}/quote-risk", state.service_c_url))
+            .get(format!("{}/quote-risk", state.risk_engine_url))
             .send()
             .await?;
         let status = response.status();
@@ -128,8 +133,8 @@ async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOt
             record_event(
                 "process.risk.failed",
                 [
-                    EventField::string("operation.name", "process.call_risk_engine"),
-                    EventField::string("downstream.service", "service-c"),
+                    EventField::string("operation.name", "process.request_risk_quote"),
+                    EventField::string("downstream.service", "risk-engine"),
                     EventField::i64("downstream.status_code", i64::from(status.as_u16())),
                 ],
             );
@@ -143,8 +148,8 @@ async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOt
         record_event(
             "process.risk.completed",
             [
-                EventField::string("operation.name", "process.call_risk_engine"),
-                EventField::string("downstream.service", "service-c"),
+                EventField::string("operation.name", "process.request_risk_quote"),
+                EventField::string("downstream.service", "risk-engine"),
                 EventField::i64("downstream.status_code", i64::from(status.as_u16())),
             ],
         );
@@ -152,11 +157,11 @@ async fn call_risk_engine(state: &AppState) -> Result<Value, my_infra_otel::MyOt
         Ok(body)
     }
     .instrument(tracing::info_span!(
-        "process.call_risk_engine",
+        "process.request_risk_quote",
         component = "processor",
-        operation.name = "process.call_risk_engine",
-        step = "call_risk_engine",
-        downstream.service = "service-c",
+        operation.name = "process.request_risk_quote",
+        step = "request_risk_quote",
+        downstream.service = "risk-engine",
     ))
     .await
 }
@@ -237,10 +242,8 @@ fn internal_error(err: impl std::fmt::Display) -> (StatusCode, Json<Value>) {
     )
 }
 
-fn tracing_config(service_name: &str) -> Result<TracingConfig, my_infra_otel::MyOtelError> {
-    let builder = TracingConfig::builder(service_name);
-    match std::env::var("OTLP_ENDPOINT") {
-        Ok(endpoint) => builder.otlp_endpoint(endpoint).build(),
-        Err(_) => builder.build(),
-    }
+fn env_or_default(primary: &str, legacy: &str, default: &str) -> String {
+    std::env::var(primary)
+        .or_else(|_| std::env::var(legacy))
+        .unwrap_or_else(|_| default.to_owned())
 }
