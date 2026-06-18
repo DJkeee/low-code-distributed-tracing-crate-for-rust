@@ -27,7 +27,7 @@ pub(crate) fn init_provider(
             .map(|(key, value)| KeyValue::new(key.clone(), value.clone())),
     );
 
-    opentelemetry_otlp::new_pipeline()
+    let pipeline = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(
             opentelemetry_otlp::new_exporter()
@@ -39,7 +39,15 @@ pub(crate) fn init_provider(
             opentelemetry_sdk::trace::Config::default()
                 .with_sampler(Sampler::AlwaysOn)
                 .with_resource(Resource::new(resource_attrs)),
-        )
-        .install_simple()
-        .map_err(|err| MyOtelError::ExporterInit(err.to_string()))
+        );
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        pipeline
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
+            .map_err(|err| MyOtelError::ExporterInit(err.to_string()))
+    } else {
+        pipeline
+            .install_simple()
+            .map_err(|err| MyOtelError::ExporterInit(err.to_string()))
+    }
 }

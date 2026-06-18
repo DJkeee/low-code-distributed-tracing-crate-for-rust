@@ -127,6 +127,7 @@ where
 
         let method = request.method().clone();
         let path = request.uri().path().to_owned();
+        let route = matched_route(&request).unwrap_or_else(|| path.clone());
         let span = tracing::info_span!(
             "http.request",
             otel.kind = "server",
@@ -139,9 +140,9 @@ where
         );
 
         if self.capture_route {
-            span.record("http.route", path.as_str());
+            span.record("http.route", route.as_str());
             #[cfg(feature = "otlp")]
-            span.set_attribute("http.route", path.clone());
+            span.set_attribute("http.route", route);
         }
 
         #[cfg(feature = "otlp")]
@@ -203,6 +204,19 @@ where
             }
         })
     }
+}
+
+#[cfg(feature = "axum")]
+fn matched_route<ReqBody>(request: &http::Request<ReqBody>) -> Option<String> {
+    request
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|matched_path| matched_path.as_str().to_owned())
+}
+
+#[cfg(not(feature = "axum"))]
+fn matched_route<ReqBody>(_request: &http::Request<ReqBody>) -> Option<String> {
+    None
 }
 
 #[cfg(test)]

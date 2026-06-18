@@ -77,11 +77,19 @@ impl TracedRequestBuilder {
                 let duration_ms = started_at.elapsed().as_secs_f64() * 1000.0;
                 span.record("http.response.status_code", i64::from(status));
                 span.record("duration.ms", duration_ms);
+                let error_type = response_status_error_type(response.status());
+                if let Some(error_type) = error_type {
+                    span.record("error.type", error_type);
+                }
 
                 #[cfg(feature = "otlp")]
                 {
                     span.set_attribute("http.response.status_code", i64::from(status));
                     span.set_attribute("duration.ms", duration_ms);
+                    if let Some(error_type) = error_type {
+                        span.set_attribute("error.type", error_type);
+                        span.set_attribute("otel.status_code", "ERROR");
+                    }
                 }
 
                 Ok(response)
@@ -93,5 +101,15 @@ impl TracedRequestBuilder {
                 Err(err.into())
             }
         }
+    }
+}
+
+fn response_status_error_type(status: reqwest::StatusCode) -> Option<&'static str> {
+    if status.is_server_error() {
+        Some("http.server_error")
+    } else if status.is_client_error() {
+        Some("http.client_error")
+    } else {
+        None
     }
 }

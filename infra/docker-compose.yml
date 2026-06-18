@@ -1,10 +1,21 @@
+x-rust-service: &rust-service
+  image: rust:1-bookworm
+  working_dir: /app
+  volumes:
+    - ..:/app
+  environment:
+    OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+    RUST_LOG: info
+  depends_on:
+    - otel-collector
+
 services:
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
     ports:
       - "16686:16686"
-      - "4317:4317"
-      - "4318:4318"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.111.0
@@ -15,3 +26,63 @@ services:
       - "4318:4318"
     depends_on:
       - jaeger
+
+  service-c:
+    <<: *rust-service
+    command: cargo run -p service-c
+    environment:
+      OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      RUST_LOG: info
+      SERVICE_C_BIND: 0.0.0.0:3003
+    ports:
+      - "3003:3003"
+
+  service-b:
+    <<: *rust-service
+    command: cargo run -p service-b
+    environment:
+      OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      RUST_LOG: info
+      SERVICE_B_BIND: 0.0.0.0:3001
+      SERVICE_C_URL: http://service-c:3003
+    ports:
+      - "3001:3001"
+    depends_on:
+      - otel-collector
+      - service-c
+
+  service-a:
+    <<: *rust-service
+    command: cargo run -p service-a
+    environment:
+      OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      RUST_LOG: info
+      SERVICE_A_BIND: 0.0.0.0:3000
+      SERVICE_B_URL: http://service-b:3001
+      SERVICE_C_URL: http://service-c:3003
+    ports:
+      - "3000:3000"
+    depends_on:
+      - otel-collector
+      - service-b
+      - service-c
+
+  demo-ui:
+    <<: *rust-service
+    command: cargo run -p demo-ui
+    environment:
+      OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      RUST_LOG: info
+      DEMO_UI_BIND: 0.0.0.0:3002
+      SERVICE_A_URL: http://service-a:3000
+      SERVICE_B_URL: http://service-b:3001
+      SERVICE_C_URL: http://service-c:3003
+      JAEGER_URL: http://jaeger:16686
+    ports:
+      - "3002:3002"
+    depends_on:
+      - jaeger
+      - otel-collector
+      - service-a
+      - service-b
+      - service-c
