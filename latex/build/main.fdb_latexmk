@@ -1,0 +1,26 @@
+# Fdb version 4
+["lualatex"] 1782053363.91006 "main.tex" "build/main.pdf" "main" 1782053364.1664 2
+  "/usr/share/texlive/texmf-dist/tex/generic/iftex/iftex.sty" 1734129479 7984 7dbb9280f03c0a315425f1b4f35d43ee ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/fontenc.sty" 1738182759 5275 0d62fb62162c7ab056e941ef18c5076d ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/ltluatex.lua" 1738182759 24595 fec17c41a4fb5260392d99b075389427 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/report.cls" 1738182759 23203 7ac64169eac711b8259b91f4833984f3 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/size12.clo" 1738182759 8449 ffe4ba2166a344827c3a832d1d5e0a91 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/fontspec/fontspec-luatex.sty" 1715459803 153873 059fd32beb35a871c8ca3797f033de23 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/fontspec/fontspec.lua" 1715459803 3048 d42efa27b3923925daa2e4010a681d0c ""
+  "/usr/share/texlive/texmf-dist/tex/latex/fontspec/fontspec.sty" 1715459803 3755 4872b99d810c024f9c09bb1c62ffee3b ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-luatex.def" 1716410060 30206 5deb92e8e3cf7df2d55bef81d3986b22 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-luatex.lua" 1704491087 3839 b2e3045c3d6386724a7a4977b109956f ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3kernel/expl3.lua" 1738271527 18205 41a3b1affcb43654ae7670d3749a7ee5 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3kernel/expl3.sty" 1738271527 6565 f51d809db6193fae7b06c1bc26ca8f75 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3packages/xparse/xparse.sty" 1724879202 9783 ab4bee47700c04aadedb8da27591b0ab ""
+  "/usr/share/texlive/texmf-dist/tex/latex/tex-ini-files/lualatexquotejobname.lua" 1739226701 1020 36d4dc663e02d83b566558c712569e2d ""
+  "/usr/share/texmf/fonts/tfm/public/lm/rm-lmr12.tfm" 1254269338 11888 6841b91e46b65cf41a49b160e6e74130 ""
+  "/usr/share/texmf/tex/latex/lm/ot1lmr.fd" 1616454256 1882 28c08db1407ebff35a658fd141753d16 ""
+  "/var/lib/texmf/web2c/luahbtex/lualatex.fmt" 1782052859 5713397 32f9bd9a6d1ac1fd8aa8766552449b8a ""
+  "build/main.aux" 1782053330.66324 32 3985256e7290058c681f74d7a3565a19 "lualatex"
+  "main.tex" 1782053354.98278 1370 630a9bb3108fa51b468d7a424ba38d58 ""
+  (generated)
+  "build/main.aux"
+  "build/main.log"
+  "build/main.pdf"
+  (rewritten before read)
